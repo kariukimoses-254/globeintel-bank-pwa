@@ -1,0 +1,40 @@
+{
+  "id": "./",
+  "name": "Globeintel Bank — UI Preview",
+  "short_name": "Globeintel",
+  "description": "Installable sandbox preview of the Globeintel Bank portals. Sample data only — no real money movement.",
+  "start_url": "./index.html#/",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#08090b",
+  "theme_color": "#08090b",
+  "categories": ["finance", "business", "utilities"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Customer portal",
+      "short_name": "Customer",
+      "url": "./index.html#/login"
+    },
+    {
+      "name": "QuickBooks accounting",
+      "short_name": "Accounting",
+      "url": "./index.html#/login"
+    }
+  ]
+}
