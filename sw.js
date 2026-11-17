@@ -1,5 +1,5 @@
 /* Globeintel Bank PWA — offline app shell cache. */
-var CACHE_NAME = 'globeintel-bank-ui-v1';
+var CACHE_NAME = 'globeintel-bank-ui-v2';
 var APP_SHELL = [
   './',
   './index.html',
