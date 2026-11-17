@@ -1,8 +1,12 @@
 # Globeintel Bank — Installable UI Preview
 
+[![Live Preview](https://img.shields.io/badge/Live-Preview-brightgreen?style=for-the-badge&logo=github)](https://kariukimoses.is-a.dev/globeintel-bank-pwa/)
+[![Installable PWA](https://img.shields.io/badge/Installable-PWA-blue?style=for-the-badge)](https://kariukimoses.is-a.dev/globeintel-bank-pwa/)
+
 A single installable web app (PWA) that works on phones, tablets, laptops and desktops. It previews the Globeintel Bank landing site, four banking portals and the QuickBooks accounting workspace.
 
-**Live app:** https://kariukimoses-254.github.io/globeintel-bank-pwa/
+**Live preview:** https://kariukimoses-254.github.io/globeintel-bank-pwa/  
+**Custom domain:** https://kariukimoses.is-a.dev/globeintel-bank-pwa/
 
 > Sandbox demo only. Sample data, no real money movement, no provider connections.
 
