@@ -473,8 +473,6 @@ const initials = (name) => String(name||'GB').split(' ').filter(Boolean).slice(0
 const badge = (status) => '<span class="badge ' + esc(String(status||'').toLowerCase().replace(/ /g,'_')) + '">' + esc(status) + '</span>';
 
 /* ---------------------------------------------------------------- mock data */
-const ME = 'James Mwangi';
-
 const DATA = {
   customers: [
     {id:'CUST-10024',name:'James Mwangi',phone:'+254 712 345 678',email:'james.mwangi@example.com',branch:'Nairobi CBD',status:'Active',kyc:'Verified',balance:284500.75},
@@ -637,9 +635,12 @@ function viewsFor(user){
   if (user.role === 'EMPLOYEE') return EMPLOYEE_VIEWS;
   return CUSTOMER_VIEWS;
 }
+function isCustomer(){ return Boolean(session && session.role === 'CUSTOMER'); }
+function customerName(){ return session ? session.name : ''; }
 function mine(rows){
-  if (!session || session.role !== 'CUSTOMER') return rows;
-  return rows.filter((r)=>r.customer === ME || r.name === ME);
+  if (!isCustomer()) return rows;
+  const name = customerName();
+  return rows.filter((r)=>r.customer === name || r.name === name);
 }
 function parseRoute(){
   const raw = (window.location.hash || '#/').replace(/^#\/?/,'');
@@ -1048,10 +1049,23 @@ function accountTiles(rows){
     '</article>').join('')+'</div>';
 }
 function searchToolbar(id, placeholder){
+  let branchSelect = '<select class="select" aria-label="Branch"><option>All branches</option><option>Nairobi CBD</option><option>Mombasa</option><option>Kisumu</option></select>';
+  if (isCustomer()){
+    const source = id==='accountTbl' ? DATA.accounts
+      : id==='txTbl' ? DATA.transactions
+      : id==='loanTbl' ? DATA.loans
+      : id==='creditTbl' ? DATA.credit
+      : id==='serviceTbl' ? DATA.complaints : [];
+    const branches = [];
+    mine(source).forEach((r)=>{ if (r.branch && branches.indexOf(r.branch)===-1) branches.push(r.branch); });
+    branchSelect = branches.length
+      ? '<select class="select" aria-label="Branch">'+branches.map((b)=>'<option>'+esc(b)+'</option>').join('')+'</select>'
+      : '';
+  }
   return '<div class="toolbar"><div class="toolbar-group">'+
     '<input class="input search-input" data-filter="'+id+'" placeholder="'+placeholder+'" aria-label="Search">'+
     '</div><div class="toolbar-group">'+
-    '<select class="select" aria-label="Branch"><option>All branches</option><option>Nairobi CBD</option><option>Mombasa</option><option>Kisumu</option></select>'+
+    branchSelect+
     '<button class="btn btn-outline btn-sm" data-action="toast-demo" data-message="Filters applied to sample data.">Filter</button>'+
     '</div></div>';
 }
@@ -1071,10 +1085,14 @@ const MODALS = {
   },
   transaction: {
     title:'New transaction', subtitle:'Demo form — no money is moved.', ok:'Review transaction',
-    body:function(){ return '<div class="form-grid">'+fieldSelect('From account','account',['0012345678 — Current','0012345723 — Savings'])+
-      fieldSelect('Type','type',['Deposit','Withdrawal','Internal transfer','M-Pesa out'])+
-      fieldInput('Amount (KSh)','amount','number')+fieldInput('Reference / note','note')+
-      '<div class="full form-hint">Sensitive operations require an OTP in the real application. This preview only records the intent.</div></div>'; }
+    body:function(){
+      const accts = mine(DATA.accounts);
+      const options = accts.length ? accts.map((a)=>a.number+' — '+a.type) : ['No accounts available'];
+      return '<div class="form-grid">'+fieldSelect('From account','account',options)+
+        fieldSelect('Type','type',['Deposit','Withdrawal','Internal transfer','M-Pesa out'])+
+        fieldInput('Amount (KSh)','amount','number')+fieldInput('Reference / note','note')+
+        '<div class="full form-hint">Sensitive operations require an OTP in the real application. This preview only records the intent.</div></div>';
+    }
   },
   complaint: {
     title:'Raise a service ticket', subtitle:'Tell us what happened and we will route it to the right team.', ok:'Submit ticket',
@@ -1085,7 +1103,7 @@ const MODALS = {
   },
   loan: {
     title:'New loan application', subtitle:'Applications move through review, recommendation and approval.', ok:'Submit application',
-    body:function(){ return '<div class="form-grid">'+fieldInput('Customer','customer')+
+    body:function(){ return '<div class="form-grid">'+fieldInput('Customer','customer','text',isCustomer()?customerName():'')+
       fieldSelect('Product','product',['Personal','Business','Asset finance','Savings-backed'])+
       fieldInput('Amount (KSh)','amount','number')+fieldSelect('Term','term',['12 months','18 months','24 months','36 months','60 months'])+'</div>'; }
   },
@@ -1128,17 +1146,26 @@ function viewDashboard(){
 function customerDashboard(){
   const accts = mine(DATA.accounts), txs = mine(DATA.transactions), loans = mine(DATA.loans);
   const total = accts.reduce((s,a)=>s+a.balance,0);
-  return pageHead('Good morning, James.','Here is what is happening with your money.',
+  const outgoing = txs.filter((r)=>['Withdrawal','Transfer','M-Pesa Out'].indexOf(r.type)!==-1 && r.status==='Completed');
+  const spent = outgoing.reduce((s,r)=>s+(r.amount||0),0);
+  const activeLoans = loans.filter((l)=>l.status==='Active');
+  const nextDates = activeLoans.map((l)=>l.next).filter((d)=>d&&d!=='—').sort();
+  const nextPayment = nextDates.length ? fmtDate(nextDates[0]) : 'None due';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : (hour < 17 ? 'Good afternoon' : 'Good evening');
+  const firstName = String(customerName()||'there').split(' ')[0];
+  const balanceTrend = [0.64,0.70,0.68,0.79,0.87,1].map((f)=>Math.round(total/1000*f));
+  return pageHead(greeting+', '+firstName+'.','Here is what is happening with your money.',
       '<a class="btn btn-outline btn-sm" href="#/app/accounts">View statements</a><a class="btn btn-gold btn-sm" href="#/app/transactions">New transaction</a>')+
     metrics([
       {label:'Available balance',value:shortMoney(total),hint:'Across '+accts.length+' accounts',gold:true},
-      {label:'Spent this month',value:'KSh 42,300',hint:'8 transactions',tone:'warn'},
-      {label:'Active loans',value:String(loans.filter((l)=>l.status==='Active').length),hint:'Next payment 05 Dec'},
+      {label:'Spent this month',value:shortMoney(spent),hint:outgoing.length+' outgoing transactions',tone:'warn'},
+      {label:'Active loans',value:String(activeLoans.length),hint:'Next payment '+nextPayment},
       {label:'Sandbox status',value:'Active',hint:'Sample data only',tone:'good'}
     ])+
     '<div class="grid-dash">'+
-      panel('Balance trend','How your balance moved over six months',
-        areaChart('custTrend',[182,198,191,224,246,284],'#d4af37')+
+      panel('Balance trend','Your own total balance over six months',
+        areaChart('custTrend',balanceTrend,'#d4af37')+
         '<div class="legend"><span><i style="background:#d4af37"></i> Total balance (KSh thousands)</span></div>')+
       panel('Quick actions','The things you do most',
         '<div class="kpi-strip"><div class="kpi-pill"><span>Deposit</span><strong>◉ M-Pesa</strong></div><div class="kpi-pill"><span>Transfer</span><strong>⇄ Internal</strong></div><div class="kpi-pill"><span>Support</span><strong>✉ Service desk</strong></div></div>'+
@@ -1241,19 +1268,23 @@ function viewCustomers(){
 }
 function viewAccounts(){
   const rows = mine(DATA.accounts);
-  return pageHead('Accounts','Every account, clearly explained.',
+  const oldest = rows.length ? rows.reduce((a,b)=>a.opened<b.opened?a:b).opened : '';
+  const fourth = isCustomer()
+    ? {label:'Oldest account',value:oldest?fmtDate(oldest):'—',hint:'Opened on'}
+    : {label:'CUST rollup',value:'2000',hint:'Customer control account'};
+  return pageHead('Accounts',isCustomer()?'Only your accounts are shown.':'Every account, clearly explained.',
       '<button class="btn btn-outline btn-sm" data-action="download-csv" data-report="accounts">Export CSV</button>'+
       '<button class="btn btn-gold btn-sm" data-action="toast-demo" data-message="Account opening form would open here.">Open account</button>')+
     metrics([
       {label:'Accounts',value:String(rows.length),hint:'In this view',gold:true},
       {label:'Total balance',value:shortMoney(rows.reduce((s,a)=>s+a.balance,0)),hint:'Ledger-backed'},
       {label:'Active',value:String(rows.filter((a)=>a.status==='Active').length),hint:'Available',tone:'good'},
-      {label:'CUST rollup',value:'2000',hint:'Customer control account'}
+      fourth
     ])+
     '<div class="section-label">Account overview</div>'+accountTiles(rows)+
     '<div class="section-label">Register</div>'+
     searchToolbar('accountTbl','Search accounts…')+
-    panel('Account register','Customer sub-ledgers roll up to GL 2000',dataTable([
+    panel('Account register',isCustomer()?'A record of every account in your name':'Customer sub-ledgers roll up to GL 2000',dataTable([
       {label:'Account',key:'number',render:(r)=>'<strong class="mono">'+r.number+'</strong>'},
       {label:'Customer',key:'customer'},
       {label:'Type',key:'type'},
@@ -1266,21 +1297,32 @@ function viewAccounts(){
 }
 function viewTransactions(){
   const rows = mine(DATA.transactions);
-  return pageHead('Transactions','Move money with confidence.',
+  const feesPaid = rows.reduce((s,r)=>s+(r.fee||0),0);
+  const fourth = isCustomer()
+    ? {label:'Fees paid',value:shortMoney(feesPaid),hint:'On your transactions',tone:'warn'}
+    : {label:'Fees earned',value:'KSh 230',hint:'Fee income GL 4000'};
+  return pageHead('Transactions',isCustomer()?'Only your own transactions are shown.':'Move money with confidence.',
       '<button class="btn btn-outline btn-sm" data-action="download-csv" data-report="transactions">Export CSV</button>'+
       '<button class="btn btn-gold btn-sm" data-action="open-modal" data-modal="transaction">New transaction</button>')+
     metrics([
       {label:'Transactions',value:String(rows.length),hint:'In this view',gold:true},
       {label:'Completed',value:String(rows.filter((r)=>r.status==='Completed').length),hint:'Posted to ledger',tone:'good'},
       {label:'In flight',value:String(rows.filter((r)=>r.status==='Awaiting manager').length),hint:'Approval required',tone:'warn'},
-      {label:'Fees earned',value:'KSh 230',hint:'Fee income GL 4000'}
+      fourth
     ])+
     searchToolbar('txTbl','Search by reference, customer or type…')+
-    panel('Transaction register','Balanced journals are posted atomically',dataTable(txCols(),rows,{id:'txTbl'}));
+    panel('Transaction register',isCustomer()?'Every entry above belongs to your account':'Balanced journals are posted atomically',dataTable(txCols(),rows,{id:'txTbl'}));
 }
 function viewMpesa(){
   const rows = mine(DATA.mpesa);
-  return pageHead('M-Pesa','Bank and mobile, working together.',
+  const inbound = rows.filter((r)=>r.type==='Deposit'&&r.status==='Completed').reduce((s,r)=>s+(r.amount||0),0);
+  const outbound = rows.filter((r)=>r.type==='Withdrawal'&&r.status==='Completed').reduce((s,r)=>s+(r.amount||0),0);
+  const positionPanel = isCustomer()
+    ? panel('Your M-Pesa activity','Completed requests linked to your number',
+        kvList([['Inbound','KSh '+inbound.toLocaleString('en-KE')+'.00','gold'],['Outbound','KSh '+outbound.toLocaleString('en-KE')+'.00'],['Requests',String(rows.length)],['Net movement','KSh '+(inbound-outbound).toLocaleString('en-KE')+'.00']]))
+    : panel('Settlement position','M-Pesa clearing account',
+        kvList([['Opening','KSh 0.00'],['Inbound today','KSh 33,400.00','gold'],['Outbound today','KSh 14,200.00'],['Clearing balance','KSh 19,200.00']]));
+  return pageHead('M-Pesa',isCustomer()?'Your mobile money requests, and nothing else.':'Bank and mobile, working together.',
       '<button class="btn btn-gold btn-sm" data-action="toast-demo" data-message="M-Pesa request form would open here.">New request</button>')+
     metrics([
       {label:'Requests',value:String(rows.length),hint:'Last 72 hours',gold:true},
@@ -1293,11 +1335,10 @@ function viewMpesa(){
         '<div class="mfa-note">Callbacks are verified with an HMAC signature and deduplicated by provider reference in the full application. This preview only illustrates the flow.</div>'+
         '<div class="btn-row"><button class="btn btn-gold btn-sm" data-action="toast-demo" data-message="Simulated M-Pesa deposit callback created (no money moved).">Simulate deposit</button>'+
         '<button class="btn btn-outline btn-sm" data-action="toast-demo" data-message="Simulated M-Pesa withdrawal request queued.">Simulate withdrawal</button></div>')+
-      panel('Settlement position','M-Pesa clearing account',
-        kvList([['Opening','KSh 0.00'],['Inbound today','KSh 33,400.00','gold'],['Outbound today','KSh 14,200.00'],['Clearing balance','KSh 19,200.00']]))
+      positionPanel
     '</div>'+
     '<div class="section-label">Requests</div>'+
-    panel('M-Pesa requests','Provider references and reconciliation status',dataTable([
+    panel('M-Pesa requests',isCustomer()?'Only your provider references appear here':'Provider references and reconciliation status',dataTable([
       {label:'Reference',key:'ref',render:(r)=>'<span class="mono">'+r.ref+'</span>'},
       {label:'Time',key:'time'},
       {label:'Customer',key:'customer'},
@@ -1309,21 +1350,40 @@ function viewMpesa(){
 }
 function viewLoans(){
   const rows = mine(DATA.loans);
-  return pageHead('Loans','Borrow with your eyes open.',
+  const activeLoans = rows.filter((l)=>l.status==='Active');
+  const outstanding = rows.reduce((s,l)=>s+(l.balance||0),0);
+  const nextDates = activeLoans.map((l)=>l.next).filter((d)=>d&&d!=='—').sort();
+  const panels = isCustomer()
+    ? '<div class="grid-2">'+
+        panel('Your loan summary','Only your own applications are included',kvList([
+          ['Active loans',String(activeLoans.length),'gold'],
+          ['Total outstanding','KSh '+outstanding.toLocaleString('en-KE')+'.00'],
+          ['Next payment',nextDates.length?fmtDate(nextDates[0]):'None due'],
+          ['Applications',String(rows.length)]
+        ]))+
+        panel('Repayment reminder','Straight from your loan records',
+          '<div class="mfa-note">Your outstanding balance and next payment date come only from your own loans above. No other customer’s lending appears in this portal. Contact the service desk if a detail looks wrong.</div>'+
+          '<div class="btn-row mt-16"><a class="btn btn-outline btn-sm" href="#/app/service">Contact support</a></div>')+
+      '</div>'
+    : '<div class="grid-2">'+
+        panel('Approval workflow','Every decision is recorded',workflow(['Application','Officer review','Manager recommendation','CEO decision','Disbursement'],2))+
+        panel('Portfolio quality','Sample indicators',kvList([
+          ['Performing','98.2%','gold'],['Watch list','1.1%'],['Arrears','0.7%'],['Provision coverage','142%']
+        ]))+
+      '</div>';
+  const fourth = isCustomer()
+    ? {label:'Outstanding',value:shortMoney(outstanding),hint:'Across your loans',tone:'warn'}
+    : {label:'Net book',value:'KSh 486.2M',hint:'Bank-wide'};
+  return pageHead('Loans',isCustomer()?'Your applications, balances and repayment dates only.':'Borrow with your eyes open.',
       '<button class="btn btn-outline btn-sm" data-action="download-csv" data-report="loans">Export CSV</button>'+
       '<button class="btn btn-gold btn-sm" data-action="open-modal" data-modal="loan">New application</button>')+
     metrics([
       {label:'Applications',value:String(rows.length),hint:'In this view',gold:true},
-      {label:'Active',value:String(rows.filter((l)=>l.status==='Active').length),hint:'Performing',tone:'good'},
+      {label:'Active',value:String(activeLoans.length),hint:'Performing',tone:'good'},
       {label:'Awaiting manager',value:String(rows.filter((l)=>l.status==='Awaiting manager').length),hint:'Next approval step',tone:'warn'},
-      {label:'Net book',value:'KSh 486.2M',hint:'Bank-wide'}
+      fourth
     ])+
-    '<div class="grid-2">'+
-      panel('Approval workflow','Every decision is recorded',workflow(['Application','Officer review','Manager recommendation','CEO decision','Disbursement'],2))+
-      panel('Portfolio quality','Sample indicators',kvList([
-        ['Performing','98.2%','gold'],['Watch list','1.1%'],['Arrears','0.7%'],['Provision coverage','142%']
-      ]))
-    '</div>'+
+    panels+
     '<div class="section-label">Applications</div>'+
     searchToolbar('loanTbl','Search applications…')+
     panel('Loan register','Staged, auditable decisions',dataTable([
@@ -1340,13 +1400,18 @@ function viewLoans(){
 }
 function viewCredit(){
   const rows = mine(DATA.credit);
-  return pageHead('Credit facilities','A safety net you stay in control of.',
+  const used = rows.reduce((s,r)=>s+r.used,0);
+  const available = rows.reduce((s,r)=>s+(r.limit-r.used),0);
+  const fourth = isCustomer()
+    ? {label:'Available credit',value:shortMoney(available),hint:'Remaining on your facilities',tone:'good'}
+    : {label:'Receivable GL',value:'1150',hint:'Credit receivable'};
+  return pageHead('Credit facilities',isCustomer()?'Your own limits, usage and availability.':'A safety net you stay in control of.',
       '<button class="btn btn-gold btn-sm" data-action="toast-demo" data-message="Facility request form would open here.">Request facility</button>')+
     metrics([
       {label:'Facilities',value:String(rows.length),hint:'In this view',gold:true},
       {label:'Total limit',value:shortMoney(rows.reduce((s,r)=>s+r.limit,0)),hint:'Approved'},
-      {label:'Utilised',value:shortMoney(rows.reduce((s,r)=>s+r.used,0)),hint:'Across facilities',tone:'warn'},
-      {label:'Receivable GL',value:'1150',hint:'Credit receivable'}
+      {label:'Utilised',value:shortMoney(used),hint:'Across facilities',tone:'warn'},
+      fourth
     ])+
     '<div class="section-label">Your facilities</div>'+
     '<div class="grid-3">'+rows.map((r)=>panel(r.facility,r.id,
@@ -1965,6 +2030,9 @@ function csvCell(value){
   return s;
 }
 function downloadCsv(report){
+  if (isCustomer() && ['accounts','transactions','loans'].indexOf(report) === -1){
+    toast('This report is not available to your role.', 'error'); return;
+  }
   let headers = [], rows = [];
   if (report === 'accounts'){
     headers = ['Account','Customer','Type','Branch','Balance','Status'];
